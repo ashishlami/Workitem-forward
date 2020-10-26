@@ -1,0 +1,53 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Workflow PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Workflow explicitTransitions="true" name="Workflow-WorkItem-Forward">
+  <Variable name="userId"/>
+  <Variable name="certWorkItemName"/>
+  <Variable name="comments"/>
+  <Variable name="formModel">
+    <Script>
+      <Source>
+      import java.util.*;
+      import sailpoint.transformer.IdentityTransformer;
+
+        Map formModel = new HashMap();
+			 	formModel.put("transformerClass","sailpoint.transformer.IdentityTransformer");
+			 	formModel.put(IdentityTransformer.ATTR_TRANSFORMER_OPTIONS, "");
+				return formModel;
+      </Source>
+    </Script>
+  </Variable>
+  <Variable name="previousOwner"/>
+  <Variable name="launcher"/>
+  <Variable name="trace"/>
+  <Step icon="Start" name="Start" posX="25" posY="164">
+    <Transition to="Initial Form"/>
+  </Step>
+  <Step icon="Analysis" name="Initial Form" posX="25" posY="5">
+    <Approval name="Approval-WorkItem-Form" owner="ref:launcher" return="ownerID,certWorkItemName,userId,comments,delegate,formModel" send="formModel">
+      <Arg name="workItemFormBasePath" value="formModel"/>
+      <Arg name="workItemForm" value="Form-Forward-WorkItem"/>
+      <Arg name="workItemType" value="Form"/>
+    </Approval>
+    <Transition to="Stop" when="exitWorkflow"/>
+    <Transition to="WorkItemGenerate"/>
+  </Step>
+  <Step icon="Stop" name="Stop" posX="1022" posY="289"/>
+  <Step action="rule:Rule-IntelWorkItemForward" icon="Default" name="WorkItemGenerate" posX="317" posY="2">
+    <Transition to="Email Notification"/>
+  </Step>
+  <Step action="rule:Rule-IntelWorkItemForwardedEmail" icon="Default" name="Email Notification" posX="543" posY="5">
+    <Transition to="AuditWorkItemForwarded"/>
+  </Step>
+  <Step action="rule:CustomAuditlog-Rule" icon="Audit" name="AuditWorkItemForwarded" posX="786" posY="7">
+    <Transition to="ConfirmationForm"/>
+  </Step>
+  <Step icon="Analysis" name="ConfirmationForm" posX="1020" posY="126">
+    <Approval name="Confirmation Form" owner="ref:launcher">
+      <Arg name="workItemFormBasePath" value="formModel"/>
+      <Arg name="workItemForm" value="Confirmation Form"/>
+      <Arg name="workItemType" value="Form"/>
+    </Approval>
+    <Transition to="Stop"/>
+  </Step>
+</Workflow>

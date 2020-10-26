@@ -1,0 +1,216 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="Rule-IntelWorkItemForwardedEmail" type="Workflow">
+  <Description>A rule used by a Workflow to determine a step action or variable value.
+
+    Note that an Attributes map of all variables from the current WorkflowContext, merged with the arguments from the Step, is also passed into the workflow rule.</Description>
+  <ReferencedRules>
+    <Reference class="sailpoint.object.Rule" name="WorkItemForward-Rule-Library"/>
+  </ReferencedRules>
+  <Signature returnType="Object">
+    <Inputs>
+      <Argument name="log">
+        <Description>
+          The log object associated with the SailPointContext.
+        </Description>
+      </Argument>
+      <Argument name="context">
+        <Description>
+          A sailpoint.api.SailPointContext object that can be used to query the database if necessary.
+        </Description>
+      </Argument>
+      <Argument name="wfcontext">
+        <Description>
+          The current WorkflowContext.
+        </Description>
+      </Argument>
+      <Argument name="handler">
+        <Description>
+          The workflow handler associated with the current WorkflowContext.
+        </Description>
+      </Argument>
+      <Argument name="workflow">
+        <Description>
+          The current Workflow definition.
+        </Description>
+      </Argument>
+      <Argument name="step">
+        <Description>
+          The current Step.
+        </Description>
+      </Argument>
+      <Argument name="approval">
+        <Description>
+          The current Approval.
+        </Description>
+      </Argument>
+      <Argument name="item">
+        <Description>
+          The WorkItem being processed.
+        </Description>
+      </Argument>
+    </Inputs>
+    <Returns>
+      <Argument name="Object">
+        <Description>
+          The result of the workflow rule; dependent on the rule itself.
+        </Description>
+      </Argument>
+    </Returns>
+  </Signature>
+  <Source>import org.apache.log4j.Logger;
+  import org.apache.log4j.Level;
+  import java.util.List;
+  import java.util.ArrayList;
+  import java.util.Map;
+  import java.text.SimpleDateFormat;
+  import java.util.Date;
+  import java.util.HashMap;
+  import sailpoint.object.WorkItem.OwnerHistory;
+  import sailpoint.object.WorkItem;
+  Logger log = Logger.getLogger("sailpoint.test");
+
+  try {
+
+    Date date = new Date();
+    SimpleDateFormat formatter = new SimpleDateFormat("MMMM dd, YYYY");
+    String strDate= formatter.format(date);
+
+    String ownerID = formModel.get("ownerID");
+    List workItem = getActiveWorkItem(ownerID);
+
+    Map emailArgs = new HashMap();
+    List formWorkItemName = formModel.get("certWorkItemName");
+
+    for(String workItemName : formWorkItemName) {
+      String finallyworkItemName="";
+      String finallyWorkItemID="";
+
+      if(workItemName.contains("(")) {
+        finallyWorkItemID = workItemName.substring(workItemName.indexOf("=")+1, workItemName.lastIndexOf(")"));
+        finallyworkItemName = workItemName.substring(0,workItemName.indexOf("("));
+      }
+
+
+
+      Filter filterApproval = Filter.eq("WorkItem.name",finallyWorkItemID);
+      QueryOptions qo_app = new QueryOptions();
+      qo_app.addFilter(filterApproval);
+
+      Iterator it_approval = context.search(WorkItem.class,qo_app);
+
+      while(it_approval.hasNext()) {
+
+        WorkItem wt_approval = (WorkItem)it_approval.next();
+
+        if(WorkItem.Type.Approval==wt_approval.getType()) {
+
+          List ownerHistoryApproval = wt_approval.getOwnerHistory();
+
+          int name = ownerHistoryApproval.size();
+          OwnerHistory historyApproval = ownerHistoryApproval.get(name-1);
+
+          String newOwner = historyApproval.getNewOwner();
+          String oldOwner = historyApproval.getOldOwner();
+          String comments = historyApproval.getComment();
+          String workItemNameDes = wt_approval.getDescription();
+          Identity newOwnerEmail = context.getObjectByName(Identity.class, newOwner);
+          Identity oldOwnerEmail = context.getObjectByName(Identity.class, oldOwner);
+
+          String newOwnerEmailId = newOwnerEmail.getEmail();
+          String oldOwnerEmailId = oldOwnerEmail.getEmail();
+
+          Identity assigner = context.getObjectByName(Identity.class, launcher);
+          String enterpriseId = assigner.getStringAttribute("empNumber");
+          String launcherEmailID = assigner.getEmail();
+
+          emailArgs.put("to",newOwnerEmailId);
+          emailArgs.put("cc", oldOwnerEmailId+","+launcherEmailID);
+          emailArgs.put("workItemName", workItemNameDes);
+          emailArgs.put("originalOwner", historyApproval.getOldOwnerDisplayName());
+          emailArgs.put("Comments", comments);
+          emailArgs.put("workItemId", wt_approval.getName());
+          emailArgs.put("OriginalOwnerEnterpriseID",oldOwnerEmail.getStringAttribute("empNumber"));
+          emailArgs.put("assignerID", assigner.getStringAttribute("empNumber"));
+          emailArgs.put("Date", strDate);
+          emailArgs.put("launcher", launcher);
+
+          sendEmailNotification(context, emailArgs);
+
+
+
+
+        } else if(WorkItem.Type.Certification==wt_approval.getType()) {
+
+          Filter filterCert = Filter.eq("Certification.name",finallyworkItemName);
+          QueryOptions qo2 = new QueryOptions();
+          qo2.addFilter(filterCert);
+
+          List itCert = context.getObjects(Certification.class,qo2);
+
+
+          for(Certification certN : itCert) {
+            String certId = certN.getId();
+
+            Certification cert = context.getObjectById(Certification.class,certId);
+            Identity launcherName = context.getObjectByName(Identity.class,launcher);
+
+            List certifier = new ArrayList();
+            certifier = cert.getCertifiers();
+
+            Filter f = Filter.and(Filter.eq("WorkItem.certification",certId),Filter.eq("WorkItem.name",finallyWorkItemID));
+            QueryOptions qo1 = new QueryOptions();
+            qo1.addFilter(f);
+
+            List itWorkItem = context.getObjects(WorkItem.class,qo1);
+            for(WorkItem workT : itWorkItem) {
+
+              Identity iden = workT.getOwner();
+              if(certifier.contains(iden.getName())) {
+                List ownerHistory = workT.getOwnerHistory();
+
+                int name = ownerHistory.size();
+                OwnerHistory history = ownerHistory.get(name-1);
+
+                String newOwner = history.getNewOwner();
+                String oldOwner = history.getOldOwner();
+                String comments = history.getComment();
+                String workItemNameDes = workT.getDescription();
+                Identity newOwnerEmail = context.getObjectByName(Identity.class, newOwner);
+                Identity oldOwnerEmail = context.getObjectByName(Identity.class, oldOwner);
+
+                String newOwnerEmailId = newOwnerEmail.getEmail();
+                String oldOwnerEmailId = oldOwnerEmail.getEmail();
+
+                Identity assigner = context.getObjectByName(Identity.class, launcher);
+                String enterpriseId = assigner.getStringAttribute("empNumber");
+                String launcherEmailID = assigner.getEmail();
+
+                emailArgs.put("to",newOwnerEmailId);
+                emailArgs.put("cc", oldOwnerEmailId+","+launcherEmailID);
+                emailArgs.put("workItemName", workItemNameDes);
+                emailArgs.put("originalOwner", history.getOldOwnerDisplayName());
+                emailArgs.put("Comments", comments);
+                emailArgs.put("workItemId", workT.getName());
+                emailArgs.put("OriginalOwnerEnterpriseID",oldOwnerEmail.getStringAttribute("empNumber"));
+                emailArgs.put("assignerID", assigner.getStringAttribute("empNumber"));
+                emailArgs.put("Date", strDate);
+                emailArgs.put("launcher", launcher);
+
+                sendEmailNotification(context, emailArgs);
+
+              }
+
+            }
+
+          }
+        }
+      }
+
+     // sailpoint.tools.Util.flushIterator(it_approval);
+    }
+
+  }catch(Exception e) {
+    log.error("Error in Rulelib method email"+e.getMessage());
+  }</Source>
+</Rule>

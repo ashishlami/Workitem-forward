@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE QuickLink PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<QuickLink action="workflow" category="Access" messageKey="Forward WorkItem" name="QuickLink-WorkItem-Forward" ordering="7">
+  <Attributes>
+    <Map>
+      <entry key="launcher">
+        <value>
+          <Script>
+            <Source>
+              return currentUser.getName();
+            </Source>
+          </Script>
+        </value>
+      </entry>
+      <entry key="workflowName" value="Workflow-WorkItem-Forward"/>
+    </Map>
+  </Attributes>
+  <QuickLinkOptions allowSelf="true">
+    <DynamicScopeRef>
+      <Reference class="sailpoint.object.DynamicScope" name="Everyone"/>
+    </DynamicScopeRef>
+  </QuickLinkOptions>
+</QuickLink>

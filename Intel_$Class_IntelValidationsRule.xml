@@ -1,0 +1,69 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="IntelValidationsRule" type="Validation">
+  <Description>This rule is used to validate the Field values on a provisioning plan.</Description>
+  <ReferencedRules>
+    <Reference class="sailpoint.object.Rule" name="WorkItemForward-Rule-Library"/>
+  </ReferencedRules>
+  <Signature returnType="Object">
+    <Inputs>
+      <Argument name="log">
+        <Description>
+          The log object associated with the SailPointContext.
+        </Description>
+      </Argument>
+      <Argument name="context">
+        <Description>
+          A sailpoint.api.SailPointContext object that can be used to query the database if necessary.
+        </Description>
+      </Argument>
+      <Argument name="identity">
+        <Description>
+            The Identity object being provisioned.
+        </Description>
+      </Argument>
+      <Argument name="app">
+        <Description>
+            The Application object being processed.
+        </Description>
+      </Argument>
+      <Argument name="form">
+        <Description>
+            The Form object being processed.
+        </Description>
+      </Argument>
+      <Argument name="field">
+        <Description>
+            The Field object being validated.
+        </Description>
+      </Argument>
+      <Argument name="value">
+        <Description>
+            The Object representing the field value.
+        </Description>
+      </Argument>
+      <Argument name="link" type="Link">
+        <Description>
+          The sailpoint.object.Link that is being acted upon. If the link is not applicable,
+          this value will be null.
+        </Description>
+      </Argument>
+    </Inputs>
+    <Returns>
+      <Argument name="value">
+        <Description>
+          An Object (possibly a Collection) of messages resulting from the
+          validation rule.
+        </Description>
+      </Argument>
+    </Returns>
+  </Signature>
+  <Source>
+ import org.apache.log4j.Logger;
+import org.apache.log4j.Level;
+
+List name = form.getField("certWorkItemName").getValue();
+String message = getValidation(name);
+return message;
+</Source>
+</Rule>

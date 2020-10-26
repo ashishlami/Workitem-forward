@@ -1,0 +1,83 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Form PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Form name="Form-Forward-WorkItem" type="Workflow">
+  <Attributes>
+    <Map>
+      <entry key="pageTitle" value="Forward-WorkItem"/>
+      <entry key="title" value="Please provide the correct information"/>
+    </Map>
+  </Attributes>
+  <Section label="Forward Work Item" name="forwardWorkItemDtls">
+    <Field displayName="Select WorkItem Owner" dynamic="true" filterString="correlated==true &amp;&amp; inactive==false &amp;&amp; empType==&quot;Internal&quot;" name="ownerID" postBack="true" type="sailpoint.object.Identity"/>
+    <Field displayName="WorkItem Name" displayType="combobox" multi="true" name="certWorkItemName" postBack="true" required="true" type="string">
+      <AllowedValuesDefinition>
+        <RuleRef>
+          <Reference class="sailpoint.object.Rule" name="Rule-ListWorkItems"/>
+        </RuleRef>
+      </AllowedValuesDefinition>
+    </Field>
+    <Field displayName="Forward To" dynamic="true" filterString="correlated==true &amp;&amp; inactive==false  &amp;&amp; empType==&quot;Internal&quot;" name="userId" postBack="true" required="true" type="sailpoint.object.Identity"/>
+    <Field displayName="Delegate" displayOnly="true" dynamic="true" name="delegate" postBack="true" type="string">
+      <Attributes>
+        <Map>
+          <entry key="hidden">
+            <value>
+              <Script>
+                <Source>
+                  import org.apache.log4j.Logger;
+                  import org.apache.log4j.Level;
+                  import java.util.Map;
+                  import java.text.SimpleDateFormat;
+                  import java.util.Date;
+                  import sailpoint.object.Identity;
+
+                  String name = form.getField("userId").getValue();
+                  Identity idObj = context.getObjectByName(Identity.class, name);
+                  if(null != idObj &amp;&amp; null != idObj.getPreference(Identity.PRF_FORWARD)){
+
+                  Date date = new Date();
+                  SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
+                  String strDate= formatter.format(date);
+                  Date d1 = formatter.parse(strDate);
+
+                  Map map = idObj.getPreferences();
+                  Date delegateName2 = map.get("forwardEndDate");
+
+                  SimpleDateFormat formatter1 = new SimpleDateFormat("yyyy-MM-dd");
+                  String strDate1= formatter1.format(delegateName2);
+                  Date d2 = formatter1.parse(strDate1);
+
+                  if(d2.before(d1)) {
+                  return true;
+
+                  } else if(d2.after(d1) || d2.equals(d1)) {
+
+                  return false;
+                  } else {
+                  log.error("Error in date calculation");
+                  }
+                  }
+                  return true;
+
+                </Source>
+              </Script>
+            </value>
+          </entry>
+        </Map>
+      </Attributes>
+      <RuleRef>
+        <Reference class="sailpoint.object.Rule" name="Rule-WorkItem-hidden"/>
+      </RuleRef>
+    </Field>
+    <Field displayName="Comments" displayType="textarea" name="comments" required="true" type="string">
+      <Attributes>
+        <Map>
+          <entry key="height" value="100"/>
+          <entry key="width" value="200"/>
+        </Map>
+      </Attributes>
+    </Field>
+  </Section>
+  <Button action="next" label="Submit"/>
+  <Button action="next" label="Exit" parameter="exitWorkflow" skipValidation="true" value="true"/>
+</Form>

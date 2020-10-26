@@ -1,0 +1,368 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="WorkItemForward-Rule-Library">
+  <Source>
+
+  import org.apache.log4j.Logger;
+  import org.apache.log4j.Level;
+  import sailpoint.object.Certification;
+  import sailpoint.object.Certifiers;
+  import sailpoint.object.Certification.Type;
+  import sailpoint.object.WorkItem;
+  import sailpoint.object.WorkItem.OwnerHistory;
+  import sailpoint.object.Identity;
+  import sailpoint.api.SailPointContext;
+  import sailpoint.object.AuditEvent;
+  import sailpoint.object.EmailOptions;
+  import sailpoint.object.EmailTemplate;
+  import sailpoint.api.ObjectUtil;
+  import sailpoint.object.Filter;
+  import sailpoint.object.QueryOptions;
+  import sailpoint.object.Attributes;
+  import sailpoint.object.*;
+  import java.util.*;
+
+  //Get Active and non-completed workItem of Owner
+  public List getActiveWorkItem(String ownerID)	{
+    try {
+
+      Filter f_w = Filter.or(Filter.eq("WorkItem.type","Approval"),Filter.eq("WorkItem.type","Certification"));
+      QueryOptions qo_w = new QueryOptions();
+      qo_w.addFilter(f_w);
+
+
+      Iterator it_w = context.search(WorkItem.class,qo_w);
+      HashSet workItem = new HashSet();
+      List items = new ArrayList();
+
+
+      while(it_w.hasNext()) {
+        WorkItem w_t = (WorkItem)it_w.next();
+
+        if(WorkItem.Type.Approval==w_t.getType()) {
+          Identity owners=w_t.getOwner();
+          String workItemNameApproval = w_t.getName();
+          String des = w_t.getDescription();
+          if(!owners.isWorkgroup()){
+            if(ownerID!=null) {
+              if(owners.getName().equals(ownerID)){
+                workItem.add(des+"("+"WID="+workItemNameApproval+")");
+              }
+            } else {
+              workItem.add(des+"("+"WID="+workItemNameApproval+")");
+            }
+          }
+        }
+
+        else if (WorkItem.Type.Certification==w_t.getType()) {
+
+
+        //  Filter filter = Filter.and(Filter.eq("Certification.phase","Active"),Filter.ne("Certification.complete",true));
+         Filter filter = Filter.eq("Certification.phase","Active");
+          QueryOptions qo = new QueryOptions();
+          qo.addFilter(filter);
+
+          Iterator it = context.search(Certification.class, qo);
+
+          while(it.hasNext()) {
+
+            Certification cert = (Certification)it.next();
+            if(null==cert.signed) {
+            String certWorkItemName = cert.getName();
+            String certID = cert.getId();
+            List workitem = cert.getWorkItems();
+            String workItemName=workitem.get(0).getName();
+
+            Filter f = Filter.and(Filter.eq("WorkItem.certification",certID),Filter.eq("WorkItem.name",workItemName));
+            QueryOptions qo1 = new QueryOptions();
+            qo1.addFilter(f);
+
+            Iterator its = context.search(WorkItem.class,qo1);
+            while (its.hasNext()) {
+
+              WorkItem work = (WorkItem)its.next();
+              Identity owners=work.getOwner();
+
+              if(!owners.isWorkgroup()){
+                if(ownerID!=null) {
+                  if(owners.getName().equals(ownerID)){
+                    workItem.add(certWorkItemName+"("+"WID="+workItemName+")");
+                  }
+                } else {
+                  workItem.add(certWorkItemName+"("+"WID="+workItemName+")");
+                }
+              }
+            }
+          }
+          }
+        }
+
+      }
+
+
+      log.info("This is workItem"+workItem);
+
+      if(workItem.size()&gt;0) {
+        for(String setWork : workItem) {
+          items.add(setWork);
+        }
+      }
+      return items;
+
+    } catch(Exception e) {
+      log.error("Error in Rulelib method getActiveWorkItem"+e.getMessage());
+    }
+    return null;
+  }
+
+  public String getForwardUser(String identityId) {
+    try{
+      String forwardingUser="";
+
+      while(true) {
+        Identity idObj = context.getObjectByName(Identity.class, identityId);
+        identityId=idObj.getName();
+        if(null != idObj &amp;&amp; null != idObj.getPreference(Identity.PRF_FORWARD))
+        {
+          forwardingUser= (String) idObj.getPreference(Identity.PRF_FORWARD);
+          Date date = new Date();
+          Map map = idObj.getPreferences();
+          Date d2 = map.get("forwardEndDate");
+
+          if(d2!=null) {
+            if ((d2.compareTo(date))&gt;=0)
+            {
+              identityId=forwardingUser;
+            }
+            else {
+
+              break;
+            }
+
+          }
+        } else {
+          break;
+        }
+
+      }
+      return identityId;
+
+
+    } catch (Exception e ) {
+      log.error("Error in Rulelib method getActiveWorkItem"+e.getMessage());
+    }
+  }
+
+
+  //Validation check for forwading work Item
+  public String getValidation(List workItem) {
+    try {
+      List OwnerHistory = new ArrayList();
+      List itemList1 = new ArrayList();
+      Map map = new HashMap();
+
+      for(String workItemName : workItem) {
+        Certification cert = context.getObjectByName(Certification.class,workItemName);
+        List listWorkItem = cert.getWorkItems();
+        String workItemNameEvaluate=listWorkItem.get(0).getName();
+
+
+        WorkItem workT=context.getObjectByName(WorkItem.class,workItemNameEvaluate);
+        List ownerHistory = workT.getOwnerHistory();
+
+        if(ownerHistory!=null) {
+
+          itemList1.add(workItemName);
+
+        }
+      }
+      if(itemList1.size()&gt;0) {
+        String error = "This following work items is already forwarded:"+itemList1.toString();
+        return error;
+      }
+
+    } catch (Exception e ) {
+      log.error("Error in Rulelib method getActiveWorkItem"+e.getMessage());
+    }
+
+    return null;
+  }
+
+  //Get WorkItem OwnerHistory
+  public void getOwnerHistory(List workItem,String delegate,String forwardUser,String launcher) {
+    try {
+      for(String workItemName : workItem) {
+       //if(workItem.contains(workItemName)) {
+          String finalworkItemName;
+          String WorkItemID="";
+          if(workItemName.contains("(")) {
+            WorkItemID = workItemName.substring(workItemName.indexOf("=")+1, workItemName.lastIndexOf(")"));
+            finalworkItemName = workItemName.substring(0,workItemName.indexOf("("));
+          }
+          List listCert = new ArrayList();
+
+
+          Filter filterApproval = Filter.eq("WorkItem.name",WorkItemID);
+          QueryOptions qo_app = new QueryOptions();
+          qo_app.addFilter(filterApproval);
+
+          Iterator it_approval = context.search(WorkItem.class,qo_app);
+
+          while(it_approval.hasNext()) {
+            log.info("this is historyapproval");
+            WorkItem wt_approval = (WorkItem)it_approval.next();
+
+            if(WorkItem.Type.Approval==wt_approval.getType()) {
+
+              List ownerHistory = wt_approval.getOwnerHistory();
+
+              int name = ownerHistory.size();
+              OwnerHistory history = ownerHistory.get(name - 1);
+
+              String newOwner = history.getNewOwner();
+              String oldOwner = history.getOldOwner();
+              String comments = history.getComment();
+
+              Identity newOwnerId = context.getObjectByName(Identity.class, newOwner);
+              Identity oldOwnerId = context.getObjectByName(Identity.class, oldOwner);
+
+              String NewOwnerId = newOwnerId.getStringAttribute("empNumber");
+              String OldOwnerId = oldOwnerId.getStringAttribute("empNumber");
+              String new_Owner= newOwner+"("+NewOwnerId+")";
+
+              String Owner_History = oldOwner+"("+OldOwnerId+")";
+
+
+              generateAuditLog(workItemName,forwardUser,comments,new_Owner,newOwner,Owner_History,launcher,delegate);
+
+
+            } else if(WorkItem.Type.Certification==wt_approval.getType()) {
+
+              Filter filterCert = Filter.eq("Certification.name",finalworkItemName);
+              QueryOptions qo2 = new QueryOptions();
+              qo2.addFilter(filterCert);
+
+
+              List itCert = context.getObjects(Certification.class,qo2);
+
+              for(Certification certN : itCert) {
+
+                String certId = certN.getId();
+
+                Certification cert = context.getObjectById(Certification.class,certId);
+                Identity launcherName = context.getObjectByName(Identity.class,launcher);
+
+                List certifier = new ArrayList();
+                certifier = cert.getCertifiers();
+
+                Filter f = Filter.and(Filter.eq("WorkItem.certification",certId),Filter.eq("WorkItem.name",WorkItemID));
+                QueryOptions qo1 = new QueryOptions();
+                qo1.addFilter(f);
+
+                List itWorkItem = context.getObjects(WorkItem.class,qo1);
+
+                for(WorkItem workT : itWorkItem) {
+
+                  Identity iden = workT.getOwner();
+                  if(certifier.contains(iden.getName())) {
+                    List ownerHistory = workT.getOwnerHistory();
+
+                    int name = ownerHistory.size();
+                    OwnerHistory history = ownerHistory.get(name - 1);
+
+                    String newOwner = history.getNewOwner();
+                    String oldOwner = history.getOldOwner();
+                    String comments = history.getComment();
+
+                    Identity newOwnerId = context.getObjectByName(Identity.class, newOwner);
+                    Identity oldOwnerId = context.getObjectByName(Identity.class, oldOwner);
+
+                    String NewOwnerId = newOwnerId.getStringAttribute("empNumber");
+                    String OldOwnerId = oldOwnerId.getStringAttribute("empNumber");
+                    String new_Owner= newOwner+"("+NewOwnerId+")";
+
+                    String Owner_History = oldOwner+"("+OldOwnerId+")";
+
+
+                    generateAuditLog(workItemName,forwardUser,comments,new_Owner,newOwner,Owner_History,launcher,delegate);
+                  }
+                }
+              }
+            }
+          }
+       // }
+      }
+    } catch(Exception e) {
+      log.error("Error in Rulelib method getActiveWorkItem"+e.getMessage());
+    }
+  }
+
+  //Email Notification of Certification Work Item Forwarding for Intel
+  public void sendEmailNotification(SailPointContext context, HashMap emailArgs){
+    try{
+
+      if(null!=emailArgs.get("to")) {
+        EmailTemplate template = context.getObjectByName(EmailTemplate.class,"Intel-Email-Notification");
+        EmailOptions options = new EmailOptions();
+        options.setTo(emailArgs.get("to"));
+
+        if(null != emailArgs.get("cc")) {
+          options.setCc(emailArgs.get("cc"));
+        }
+        options.setVariables(emailArgs);
+        context.sendEmailNotification(template, options);
+      }
+    }catch(Exception e) {
+      log.error("Error in Rulelib method sendEmailNotification"+e.getMessage());
+    }
+  }
+
+
+
+
+
+  //Custom Audit Event
+  public void generateAuditLog(String workItem, String forwardUser, String comment,String newOwner,String newOwnerName,String OldOwner2, String launcher, String delegate){
+    try{
+      log.info("this is historyFinal");
+      Identity launcherName = context.getObjectByName(Identity.class, launcher);
+      List delegateList = new ArrayList();
+      Map mArgs = new HashMap();
+      Attributes auditAttr = new Attributes();
+
+      AuditEvent event = new AuditEvent();
+
+      event.setAction("WorkItemForward");
+      event.setApplication("IIQ");
+      event.setSource(launcher+"("+launcherName.getStringAttribute("empNumber")+")");
+      //event.setAccountName();
+      event.setTarget(workItem.toString());
+      event.setAttributeName("Comment");
+      event.setAttributeValue(comment);
+      event.setString1("Old Owner");
+      event.setString2(OldOwner2.toString());
+      event.setString3("New Owner");
+      event.setString4(newOwner);
+
+      if( delegate!=null){
+        mArgs.put("Delegate", forwardUser+"("+"Forwarded to "+newOwnerName+")");
+        auditAttr.setMap(mArgs);
+        event.setAttributes(auditAttr);
+      } else {
+        String delegateExp = "None";
+        mArgs.put("Delegate", delegateExp);
+        auditAttr.setMap(mArgs);
+        event.setAttributes(auditAttr);
+
+      }
+
+      context.saveObject(event);
+      context.commitTransaction();
+
+    } catch(Exception e) {
+      log.error("Error in RuleLibrary-Pratap method generateIdentityAuditLog"+e.getMessage());
+    }
+
+  }
+  </Source>
+</Rule>

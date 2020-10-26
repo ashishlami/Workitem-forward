@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Form PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Form name="Confirmation Form">
+  <Attributes>
+    <Map>
+      <entry key="pageTitle" value="WorkItem Confirmation"/>
+    </Map>
+  </Attributes>
+  <Button action="next" label="Close"/>
+  <Section label="Request Information" type="text">
+    <Field value="&lt;center>&lt;font color='#2E8B57'>&lt;b> Your request has been successfully completed. Please click on Close button to finish request. &lt;/b>&lt;/font>&lt;/center>"/>
+  </Section>
+</Form>

@@ -1,0 +1,310 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="Rule-IntelWorkItemForward" type="Workflow">
+  <Description>A rule used by a Workflow to determine a step action or variable value.
+
+    Note that an Attributes map of all variables from the current WorkflowContext, merged with the arguments from the Step, is also passed into the workflow rule.</Description>
+  <ReferencedRules>
+    <Reference class="sailpoint.object.Rule" name="WorkItemForward-Rule-Library"/>
+  </ReferencedRules>
+  <Signature returnType="Object">
+    <Inputs>
+      <Argument name="log">
+        <Description>
+          The log object associated with the SailPointContext.
+        </Description>
+      </Argument>
+      <Argument name="context">
+        <Description>
+          A sailpoint.api.SailPointContext object that can be used to query the database if necessary.
+        </Description>
+      </Argument>
+      <Argument name="wfcontext">
+        <Description>
+          The current WorkflowContext.
+        </Description>
+      </Argument>
+      <Argument name="handler">
+        <Description>
+          The workflow handler associated with the current WorkflowContext.
+        </Description>
+      </Argument>
+      <Argument name="workflow">
+        <Description>
+          The current Workflow definition.
+        </Description>
+      </Argument>
+      <Argument name="step">
+        <Description>
+          The current Step.
+        </Description>
+      </Argument>
+      <Argument name="approval">
+        <Description>
+          The current Approval.
+        </Description>
+      </Argument>
+      <Argument name="item">
+        <Description>
+          The WorkItem being processed.
+        </Description>
+      </Argument>
+    </Inputs>
+    <Returns>
+      <Argument name="Object">
+        <Description>
+          The result of the workflow rule; dependent on the rule itself.
+        </Description>
+      </Argument>
+    </Returns>
+  </Signature>
+  <Source>import org.apache.log4j.Logger;
+  import org.apache.log4j.Level;
+  import sailpoint.object.Certification;
+  import sailpoint.object.Certification.Type;
+  import sailpoint.object.WorkItem;
+  import sailpoint.object.Identity;
+  import sailpoint.object.WorkItem.OwnerHistory;
+  import java.util.*;
+  import java.util.Date;
+  import java.text.SimpleDateFormat;
+  import sailpoint.object.QueryOptions;
+  import sailpoint.object.Filter;
+
+  Date date = new Date();
+  String ownerID = formModel.get("ownerID");
+  List workItem = getActiveWorkItem(ownerID);
+
+  String identityId = formModel.get("userId");
+  String delegate = formModel.get("delegate");
+  String comment = formModel.get("comments");
+  List formWorkItemName = formModel.get("certWorkItemName");
+
+
+  if(delegate==null) {
+    for(String workItemName : formWorkItemName) {
+      String finalworkItemName;
+      String WorkItemID="";
+      if(workItemName.contains("(")) {
+        WorkItemID = workItemName.substring(workItemName.indexOf("=")+1, workItemName.lastIndexOf(")"));
+        finalworkItemName = workItemName.substring(0,workItemName.indexOf("("));
+      }
+
+      Filter filterApproval = Filter.eq("WorkItem.name",WorkItemID);
+      QueryOptions qo_app = new QueryOptions();
+      qo_app.addFilter(filterApproval);
+
+      Iterator it_approval = context.search(WorkItem.class,qo_app);
+
+      while(it_approval.hasNext()) {
+
+        WorkItem wt_approval = (WorkItem)it_approval.next();
+
+        if(WorkItem.Type.Approval==wt_approval.getType()) {
+
+          Identity identApproval = context.getObjectByName(Identity.class,identityId);
+          Identity launcherName = context.getObjectByName(Identity.class,launcher);
+          Identity idenApproval = wt_approval.getOwner();
+
+          WorkItem.OwnerHistory nestedObject_approval = new WorkItem.OwnerHistory();
+          nestedObject_approval.setNewOwner(identApproval.getName());
+          nestedObject_approval.setOldOwner(idenApproval.getName());
+          nestedObject_approval.setOldOwnerDisplayName(idenApproval.getDisplayName());
+          nestedObject_approval.setNewOwnerDisplayName(identApproval.getDisplayName());
+          nestedObject_approval.setSource(launcherName.getName());
+          nestedObject_approval.setSourceDisplayName(launcherName.getDisplayName());
+          nestedObject_approval.setComment(comment);
+          nestedObject_approval.setStartDate(date);
+
+          List workItemHistoryApproval = new ArrayList();
+          workItemHistoryApproval.add(nestedObject_approval);
+          wt_approval.setOwner(identApproval);
+          wt_approval.addComment(comment,launcherName);
+          wt_approval.addOwnerHistory(nestedObject_approval);
+          context.saveObject(wt_approval);
+          context.commitTransaction();
+
+
+
+        } else if (WorkItem.Type.Certification==wt_approval.getType()) {
+
+
+          Filter filterCert = Filter.eq("Certification.name",finalworkItemName);
+          QueryOptions qo2 = new QueryOptions();
+          qo2.addFilter(filterCert);
+
+          List itCert = context.getObjects(Certification.class,qo2);
+
+          for(Certification certN : itCert) {
+
+            String certId = certN.getId();
+
+            Certification cert = context.getObjectById(Certification.class,certId);
+            Identity ident = context.getObjectByName(Identity.class,identityId);
+            Identity launcherName = context.getObjectByName(Identity.class,launcher);
+
+            List newCertifier = new ArrayList();
+            newCertifier.add(ident);
+
+            List certifier = new ArrayList();
+            certifier = cert.getCertifiers();
+
+            Filter f = Filter.and(Filter.eq("WorkItem.certification",certId),Filter.eq("WorkItem.name",WorkItemID));
+            QueryOptions qo1 = new QueryOptions();
+            qo1.addFilter(f);
+
+            List itWorkItem = context.getObjects(WorkItem.class,qo1);
+
+            for(WorkItem workT : itWorkItem) {
+
+              Identity iden = workT.getOwner();
+              if(certifier.contains(iden.getName())) {
+                WorkItem.OwnerHistory nestedObject = new WorkItem.OwnerHistory();
+                nestedObject.setNewOwner(ident.getName());
+                nestedObject.setOldOwner(iden.getName());
+                nestedObject.setOldOwnerDisplayName(iden.getDisplayName());
+                nestedObject.setNewOwnerDisplayName(ident.getDisplayName());
+                nestedObject.setSource(launcherName.getName());
+                nestedObject.setSourceDisplayName(launcherName.getDisplayName());
+                nestedObject.setComment(comment);
+                nestedObject.setStartDate(date);
+
+                List workItemHistory = new ArrayList();
+                workItemHistory.add(nestedObject);
+                workT.setOwner(ident);
+                workT.addComment(comment,launcherName);
+                workT.addOwnerHistory(nestedObject);
+                cert.setCertifierIdentities(newCertifier);
+                context.saveObject(workT);
+                context.saveObject(cert);
+                context.commitTransaction();
+
+
+
+              }
+
+            }
+          }
+        }
+
+      }
+    //  sailpoint.tools.Util.flushIterator(it_approval);
+
+    }
+
+
+
+  }else {
+
+    String delegateName = getForwardUser(identityId);
+    for(String workItemName : formWorkItemName) {
+      String finalworkItemName;
+      String WorkItemID="";
+      if(workItemName.contains("(")) {
+        WorkItemID = workItemName.substring(workItemName.indexOf("=")+1, workItemName.lastIndexOf(")"));
+        finalworkItemName = workItemName.substring(0,workItemName.indexOf("("));
+      }
+
+
+
+      Filter filterApproval = Filter.eq("WorkItem.name",WorkItemID);
+      QueryOptions qo_app = new QueryOptions();
+      qo_app.addFilter(filterApproval);
+
+      Iterator it_approval = context.search(WorkItem.class,qo_app);
+
+      while(it_approval.hasNext()) {
+
+        WorkItem wt_approval = (WorkItem)it_approval.next();
+
+        if(WorkItem.Type.Approval==wt_approval.getType()) {
+          Identity idenApproval = wt_approval.getOwner();
+          Identity identApproval = context.getObjectByName(Identity.class, delegateName);
+          Identity launcherName = context.getObjectByName(Identity.class,launcher);
+
+          WorkItem.OwnerHistory nestedObject_approval = new WorkItem.OwnerHistory();
+          nestedObject_approval.setNewOwner(identApproval.getName());
+          nestedObject_approval.setOldOwner(idenApproval.getName());
+          nestedObject_approval.setOldOwnerDisplayName(idenApproval.getDisplayName());
+          nestedObject_approval.setNewOwnerDisplayName(identApproval.getDisplayName());
+          nestedObject_approval.setSource(launcherName.getName());
+          nestedObject_approval.setSourceDisplayName(launcherName.getDisplayName());
+          nestedObject_approval.setComment(comment);
+          nestedObject_approval.setStartDate(date);
+
+          List workItemHistoryApproval = new ArrayList();
+          workItemHistoryApproval.add(nestedObject_approval);
+          wt_approval.setOwner(identApproval);
+          wt_approval.addComment(comment,launcherName);
+          wt_approval.addOwnerHistory(nestedObject_approval);
+          context.saveObject(wt_approval);
+          context.commitTransaction();
+
+
+        } else if (WorkItem.Type.Certification==wt_approval.getType()){
+
+
+          Filter filterCert = Filter.eq("Certification.name",finalworkItemName);
+          QueryOptions qo2 = new QueryOptions();
+          qo2.addFilter(filterCert);
+
+          List itCert = context.getObjects(Certification.class,qo2);
+
+          for(Certification certN : itCert) {
+            String certId = certN.getId();
+
+            Certification cert = context.getObjectById(Certification.class,certId);
+            Identity ident = context.getObjectByName(Identity.class, delegateName);
+            Identity launcherName = context.getObjectByName(Identity.class,launcher);
+
+            List newCertifier = new ArrayList();
+            newCertifier.add(ident);
+
+            List certifier = new ArrayList();
+            certifier = cert.getCertifiers();
+
+            Filter f = Filter.and(Filter.eq("WorkItem.certification",certId),Filter.eq("WorkItem.name",WorkItemID));
+            QueryOptions qo1 = new QueryOptions();
+            qo1.addFilter(f);
+
+            List itWorkItem = context.getObjects(WorkItem.class,qo1);
+
+            for(WorkItem workT : itWorkItem) {
+
+              Identity iden = workT.getOwner();
+              if(certifier.contains(iden.getName())) {
+
+                WorkItem.OwnerHistory nestedObject = new WorkItem.OwnerHistory();
+                nestedObject.setNewOwner(ident.getName());
+                nestedObject.setOldOwner(iden.getName());
+                nestedObject.setOldOwnerDisplayName(iden.getDisplayName());
+                nestedObject.setNewOwnerDisplayName(ident.getDisplayName());
+                nestedObject.setSource(launcherName.getName());
+                nestedObject.setSourceDisplayName(launcherName.getDisplayName());
+                nestedObject.setComment(comment);
+                nestedObject.setStartDate(date);
+
+                List workItemHistory = new ArrayList();
+                workItemHistory.add(nestedObject);
+                workT.setOwner(ident);
+                workT.addComment(comment,launcherName);
+                workT.addOwnerHistory(nestedObject);
+                cert.setCertifierIdentities(newCertifier);
+                context.saveObject(workT);
+                context.saveObject(cert);
+                context.commitTransaction();
+
+              }
+
+            }
+
+          }
+
+        }
+      }
+
+     // sailpoint.tools.Util.flushIterator(it_approval);
+    }
+  }
+  context.decache();</Source>
+</Rule>
